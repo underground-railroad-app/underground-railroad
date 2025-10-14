@@ -85,12 +85,13 @@ class VeilidService {
 
       // STEP 3: Attach to network
       await Veilid.instance.attach();
-      debugPrint('   ✅ Attached to network');
+      debugPrint('   ✅ Attach requested (waiting for network...)');
 
       _initialized = true;
-      _connected = true;
+      // Don't set _connected yet - wait for VeilidUpdateAttachment event
+      _connected = false;
 
-      debugPrint('🟢 Veilid fully connected!');
+      debugPrint('⏳ Veilid initialized, waiting for network attachment...');
     } catch (e) {
       debugPrint('❌ Veilid initialization failed: $e');
       debugPrint('   App will work offline');
@@ -105,10 +106,21 @@ class VeilidService {
     if (update is VeilidLog) {
       debugPrint('[Veilid] ${update.logLevel}: ${update.message}');
     } else if (update is VeilidUpdateAttachment) {
-      // Check if attached (any state except detached/detaching)
+      // Check if attached (any state except detached/detaching/attaching)
+      final wasConnected = _connected;
       _connected = update.state != AttachmentState.detached &&
-                   update.state != AttachmentState.detaching;
-      debugPrint('[Veilid] State: ${update.state.name} ${_connected ? "🟢" : "🔴"}');
+                   update.state != AttachmentState.detaching &&
+                   update.state != AttachmentState.attaching;
+
+      // Log state changes prominently
+      final icon = _connected ? "🟢" : "🔴";
+      debugPrint('[Veilid] Attachment: ${update.state.name} $icon');
+
+      if (!wasConnected && _connected) {
+        debugPrint('🎉 Veilid connected to network!');
+      } else if (wasConnected && !_connected) {
+        debugPrint('⚠️ Veilid disconnected from network');
+      }
     } else if (update is VeilidUpdateNetwork) {
       debugPrint('[Veilid] Network: ${update.started ? "started" : "stopped"}');
     } else if (update is VeilidAppMessage) {

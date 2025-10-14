@@ -217,6 +217,7 @@ impl<'db> IdentityRepository<'db> {
             fingerprint,
             created_at,
             is_primary,
+            veilid_mailbox: None, // Not stored in DB yet, managed via separate FFI calls
         })
     }
 }

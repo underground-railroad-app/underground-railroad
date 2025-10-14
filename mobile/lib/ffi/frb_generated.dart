@@ -64,7 +64,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => -166108802;
+  int get rustContentHash => -839462706;
 
   static const kDefaultExternalLibraryLoaderConfig = ExternalLibraryLoaderConfig(
     stem: 'underground_railroad_ffi',
@@ -74,26 +74,46 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
 }
 
 abstract class RustLibApi extends BaseApi {
-  Future<void> crateApiAddContact({required String name, required String fingerprintWords});
+  Future<void> crateApiAddContact({required String name, required String fingerprintWords, required String mailboxKey});
 
   Future<String> crateApiCreateEmergency(
       {required List<String> needs, required String region, required String urgency, required int numPeople});
+
+  Future<String> crateApiCreateVeilidMailboxDesktop();
+
+  Future<String> crateApiDecryptAndSaveMessage({required List<int> encryptedData});
+
+  Future<String?> crateApiGetContactMailboxKey({required String contactId});
 
   Future<List<ContactInfo>> crateApiGetContacts();
 
   Future<List<ConversationInfo>> crateApiGetConversations();
 
+  Future<String?> crateApiGetMailboxKey();
+
+  Future<Uint8List> crateApiGetMessageForVeilid({required String contactId, required String messageId});
+
   Future<List<MessageInfo>> crateApiGetMessages({required String contactId, required int limit});
 
   Future<NetworkStatus> crateApiGetStatus();
 
-  Future<String> crateApiInitialize({required String name, required String password, required String dataDir});
+  Future<String> crateApiInitialize({required String name, required String password, required String baseDataDir});
 
   Future<void> crateApiMarkMessageRead({required String messageId});
 
+  Future<List<Uint8List>> crateApiPollVeilidMailboxDesktop({required String mailboxKey});
+
   Future<String> crateApiRegisterSafeHouse({required String name, required String region, required int capacity});
 
+  Future<String> crateApiSaveReceivedMessage(
+      {required String senderId, required String content, required PlatformInt64 createdAt});
+
   Future<String> crateApiSendMessage({required String contactId, required String content});
+
+  Future<bool> crateApiSendMessageViaVeilidDesktop(
+      {required String recipientMailboxKey, required List<int> messageData});
+
+  Future<void> crateApiSetMailboxKey({required String mailboxKey});
 
   Future<void> crateApiShutdown();
 }
@@ -107,12 +127,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   });
 
   @override
-  Future<void> crateApiAddContact({required String name, required String fingerprintWords}) {
+  Future<void> crateApiAddContact(
+      {required String name, required String fingerprintWords, required String mailboxKey}) {
     return handler.executeNormal(NormalTask(
       callFfi: (port_) {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_String(name, serializer);
         sse_encode_String(fingerprintWords, serializer);
+        sse_encode_String(mailboxKey, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 1, port: port_);
       },
       codec: SseCodec(
@@ -120,14 +142,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         decodeErrorData: sse_decode_String,
       ),
       constMeta: kCrateApiAddContactConstMeta,
-      argValues: [name, fingerprintWords],
+      argValues: [name, fingerprintWords, mailboxKey],
       apiImpl: this,
     ));
   }
 
   TaskConstMeta get kCrateApiAddContactConstMeta => const TaskConstMeta(
         debugName: "add_contact",
-        argNames: ["name", "fingerprintWords"],
+        argNames: ["name", "fingerprintWords", "mailboxKey"],
       );
 
   @override
@@ -158,11 +180,79 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<List<ContactInfo>> crateApiGetContacts() {
+  Future<String> crateApiCreateVeilidMailboxDesktop() {
     return handler.executeNormal(NormalTask(
       callFfi: (port_) {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 3, port: port_);
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_String,
+        decodeErrorData: sse_decode_String,
+      ),
+      constMeta: kCrateApiCreateVeilidMailboxDesktopConstMeta,
+      argValues: [],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiCreateVeilidMailboxDesktopConstMeta => const TaskConstMeta(
+        debugName: "create_veilid_mailbox_desktop",
+        argNames: [],
+      );
+
+  @override
+  Future<String> crateApiDecryptAndSaveMessage({required List<int> encryptedData}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_list_prim_u_8_loose(encryptedData, serializer);
+        pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 4, port: port_);
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_String,
+        decodeErrorData: sse_decode_String,
+      ),
+      constMeta: kCrateApiDecryptAndSaveMessageConstMeta,
+      argValues: [encryptedData],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiDecryptAndSaveMessageConstMeta => const TaskConstMeta(
+        debugName: "decrypt_and_save_message",
+        argNames: ["encryptedData"],
+      );
+
+  @override
+  Future<String?> crateApiGetContactMailboxKey({required String contactId}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(contactId, serializer);
+        pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 5, port: port_);
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_opt_String,
+        decodeErrorData: sse_decode_String,
+      ),
+      constMeta: kCrateApiGetContactMailboxKeyConstMeta,
+      argValues: [contactId],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiGetContactMailboxKeyConstMeta => const TaskConstMeta(
+        debugName: "get_contact_mailbox_key",
+        argNames: ["contactId"],
+      );
+
+  @override
+  Future<List<ContactInfo>> crateApiGetContacts() {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 6, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_list_contact_info,
@@ -184,7 +274,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     return handler.executeNormal(NormalTask(
       callFfi: (port_) {
         final serializer = SseSerializer(generalizedFrbRustBinding);
-        pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 4, port: port_);
+        pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 7, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_list_conversation_info,
@@ -202,13 +292,59 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<String?> crateApiGetMailboxKey() {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 8, port: port_);
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_opt_String,
+        decodeErrorData: sse_decode_String,
+      ),
+      constMeta: kCrateApiGetMailboxKeyConstMeta,
+      argValues: [],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiGetMailboxKeyConstMeta => const TaskConstMeta(
+        debugName: "get_mailbox_key",
+        argNames: [],
+      );
+
+  @override
+  Future<Uint8List> crateApiGetMessageForVeilid({required String contactId, required String messageId}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(contactId, serializer);
+        sse_encode_String(messageId, serializer);
+        pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 9, port: port_);
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_list_prim_u_8_strict,
+        decodeErrorData: sse_decode_String,
+      ),
+      constMeta: kCrateApiGetMessageForVeilidConstMeta,
+      argValues: [contactId, messageId],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiGetMessageForVeilidConstMeta => const TaskConstMeta(
+        debugName: "get_message_for_veilid",
+        argNames: ["contactId", "messageId"],
+      );
+
+  @override
   Future<List<MessageInfo>> crateApiGetMessages({required String contactId, required int limit}) {
     return handler.executeNormal(NormalTask(
       callFfi: (port_) {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_String(contactId, serializer);
         sse_encode_u_32(limit, serializer);
-        pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 5, port: port_);
+        pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 10, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_list_message_info,
@@ -230,7 +366,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     return handler.executeNormal(NormalTask(
       callFfi: (port_) {
         final serializer = SseSerializer(generalizedFrbRustBinding);
-        pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 6, port: port_);
+        pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 11, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_network_status,
@@ -248,28 +384,28 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<String> crateApiInitialize({required String name, required String password, required String dataDir}) {
+  Future<String> crateApiInitialize({required String name, required String password, required String baseDataDir}) {
     return handler.executeNormal(NormalTask(
       callFfi: (port_) {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_String(name, serializer);
         sse_encode_String(password, serializer);
-        sse_encode_String(dataDir, serializer);
-        pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 7, port: port_);
+        sse_encode_String(baseDataDir, serializer);
+        pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 12, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_String,
         decodeErrorData: sse_decode_String,
       ),
       constMeta: kCrateApiInitializeConstMeta,
-      argValues: [name, password, dataDir],
+      argValues: [name, password, baseDataDir],
       apiImpl: this,
     ));
   }
 
   TaskConstMeta get kCrateApiInitializeConstMeta => const TaskConstMeta(
         debugName: "initialize",
-        argNames: ["name", "password", "dataDir"],
+        argNames: ["name", "password", "baseDataDir"],
       );
 
   @override
@@ -278,7 +414,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       callFfi: (port_) {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_String(messageId, serializer);
-        pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 8, port: port_);
+        pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 13, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_unit,
@@ -296,6 +432,29 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<List<Uint8List>> crateApiPollVeilidMailboxDesktop({required String mailboxKey}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(mailboxKey, serializer);
+        pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 14, port: port_);
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_list_list_prim_u_8_strict,
+        decodeErrorData: sse_decode_String,
+      ),
+      constMeta: kCrateApiPollVeilidMailboxDesktopConstMeta,
+      argValues: [mailboxKey],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiPollVeilidMailboxDesktopConstMeta => const TaskConstMeta(
+        debugName: "poll_veilid_mailbox_desktop",
+        argNames: ["mailboxKey"],
+      );
+
+  @override
   Future<String> crateApiRegisterSafeHouse({required String name, required String region, required int capacity}) {
     return handler.executeNormal(NormalTask(
       callFfi: (port_) {
@@ -303,7 +462,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         sse_encode_String(name, serializer);
         sse_encode_String(region, serializer);
         sse_encode_u_32(capacity, serializer);
-        pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 9, port: port_);
+        pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 15, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_String,
@@ -321,13 +480,39 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<String> crateApiSaveReceivedMessage(
+      {required String senderId, required String content, required PlatformInt64 createdAt}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(senderId, serializer);
+        sse_encode_String(content, serializer);
+        sse_encode_i_64(createdAt, serializer);
+        pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 16, port: port_);
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_String,
+        decodeErrorData: sse_decode_String,
+      ),
+      constMeta: kCrateApiSaveReceivedMessageConstMeta,
+      argValues: [senderId, content, createdAt],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiSaveReceivedMessageConstMeta => const TaskConstMeta(
+        debugName: "save_received_message",
+        argNames: ["senderId", "content", "createdAt"],
+      );
+
+  @override
   Future<String> crateApiSendMessage({required String contactId, required String content}) {
     return handler.executeNormal(NormalTask(
       callFfi: (port_) {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_String(contactId, serializer);
         sse_encode_String(content, serializer);
-        pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 10, port: port_);
+        pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 17, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_String,
@@ -345,11 +530,59 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<bool> crateApiSendMessageViaVeilidDesktop(
+      {required String recipientMailboxKey, required List<int> messageData}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(recipientMailboxKey, serializer);
+        sse_encode_list_prim_u_8_loose(messageData, serializer);
+        pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 18, port: port_);
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_bool,
+        decodeErrorData: sse_decode_String,
+      ),
+      constMeta: kCrateApiSendMessageViaVeilidDesktopConstMeta,
+      argValues: [recipientMailboxKey, messageData],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiSendMessageViaVeilidDesktopConstMeta => const TaskConstMeta(
+        debugName: "send_message_via_veilid_desktop",
+        argNames: ["recipientMailboxKey", "messageData"],
+      );
+
+  @override
+  Future<void> crateApiSetMailboxKey({required String mailboxKey}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(mailboxKey, serializer);
+        pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 19, port: port_);
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_unit,
+        decodeErrorData: sse_decode_String,
+      ),
+      constMeta: kCrateApiSetMailboxKeyConstMeta,
+      argValues: [mailboxKey],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiSetMailboxKeyConstMeta => const TaskConstMeta(
+        debugName: "set_mailbox_key",
+        argNames: ["mailboxKey"],
+      );
+
+  @override
   Future<void> crateApiShutdown() {
     return handler.executeNormal(NormalTask(
       callFfi: (port_) {
         final serializer = SseSerializer(generalizedFrbRustBinding);
-        pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 11, port: port_);
+        pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 20, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_unit,
@@ -436,9 +669,21 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<Uint8List> dco_decode_list_list_prim_u_8_strict(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_list_prim_u_8_strict).toList();
+  }
+
+  @protected
   List<MessageInfo> dco_decode_list_message_info(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_message_info).toList();
+  }
+
+  @protected
+  List<int> dco_decode_list_prim_u_8_loose(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as List<int>;
   }
 
   @protected
@@ -596,6 +841,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  List<Uint8List> sse_decode_list_list_prim_u_8_strict(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <Uint8List>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_list_prim_u_8_strict(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
   List<MessageInfo> sse_decode_list_message_info(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -605,6 +862,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       ans_.add(sse_decode_message_info(deserializer));
     }
     return ans_;
+  }
+
+  @protected
+  List<int> sse_decode_list_prim_u_8_loose(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var len_ = sse_decode_i_32(deserializer);
+    return deserializer.buffer.getUint8List(len_);
   }
 
   @protected
@@ -766,12 +1030,28 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_list_list_prim_u_8_strict(List<Uint8List> self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_list_prim_u_8_strict(item, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_list_message_info(List<MessageInfo> self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.length, serializer);
     for (final item in self) {
       sse_encode_message_info(item, serializer);
     }
+  }
+
+  @protected
+  void sse_encode_list_prim_u_8_loose(List<int> self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    serializer.buffer.putUint8List(self is Uint8List ? self : Uint8List.fromList(self));
   }
 
   @protected

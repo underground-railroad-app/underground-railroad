@@ -11,11 +11,13 @@ pub mod client;
 pub mod routes;
 pub mod dht;
 pub mod config;
+pub mod messaging;
 
 pub use client::{VeilidClient, VeilidState};
 pub use routes::{PrivateRoute, RouteId};
 pub use dht::{DHTRecord, DHTKey, DHTOperations};
 pub use config::VeilidConfig;
+pub use messaging::VeilidMailbox;
 
 use crate::Result;
 

@@ -36,6 +36,10 @@ pub struct Identity {
 
     /// Is this the primary identity?
     pub is_primary: bool,
+
+    /// Veilid DHT mailbox key (for receiving messages)
+    /// This is the serialized DHTRecordDescriptor for the mailbox
+    pub veilid_mailbox: Option<Vec<u8>>,
 }
 
 impl Identity {
@@ -52,6 +56,7 @@ impl Identity {
             fingerprint,
             created_at: crate::CoarseTimestamp::now(),
             is_primary,
+            veilid_mailbox: None,
         })
     }
 
@@ -68,6 +73,7 @@ impl Identity {
             fingerprint,
             created_at: crate::CoarseTimestamp::now(),
             is_primary,
+            veilid_mailbox: None,
         })
     }
 

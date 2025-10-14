@@ -7,12 +7,12 @@ import 'frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 // These functions are ignored because they are not marked as `pub`: `to_string_err`
-// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `DATABASE`, `IDENTITY`, `VEILID_CLIENT`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `deref`, `deref`, `deref`, `fmt`, `fmt`, `fmt`, `fmt`, `initialize`, `initialize`, `initialize`
+// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `BASE_DATA_DIR`, `DATABASE`, `DATA_DIR`, `IDENTITY`, `VEILID_CLIENT`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `deref`, `deref`, `deref`, `deref`, `deref`, `fmt`, `fmt`, `fmt`, `fmt`, `initialize`, `initialize`, `initialize`, `initialize`, `initialize`
 
 /// Initialize the Underground Railroad with user credentials
-Future<String> initialize({required String name, required String password, required String dataDir}) =>
-    RustLib.instance.api.crateApiInitialize(name: name, password: password, dataDir: dataDir);
+Future<String> initialize({required String name, required String password, required String baseDataDir}) =>
+    RustLib.instance.api.crateApiInitialize(name: name, password: password, baseDataDir: baseDataDir);
 
 /// Create an emergency request
 Future<String> createEmergency(
@@ -26,9 +26,13 @@ Future<NetworkStatus> getStatus() => RustLib.instance.api.crateApiGetStatus();
 Future<String> registerSafeHouse({required String name, required String region, required int capacity}) =>
     RustLib.instance.api.crateApiRegisterSafeHouse(name: name, region: region, capacity: capacity);
 
-/// Add a contact
-Future<void> addContact({required String name, required String fingerprintWords}) =>
-    RustLib.instance.api.crateApiAddContact(name: name, fingerprintWords: fingerprintWords);
+/// Add a contact with their Veilid mailbox key
+Future<void> addContact({required String name, required String fingerprintWords, required String mailboxKey}) =>
+    RustLib.instance.api.crateApiAddContact(name: name, fingerprintWords: fingerprintWords, mailboxKey: mailboxKey);
+
+/// Get a contact's Veilid mailbox key
+Future<String?> getContactMailboxKey({required String contactId}) =>
+    RustLib.instance.api.crateApiGetContactMailboxKey(contactId: contactId);
 
 /// Get all contacts
 Future<List<ContactInfo>> getContacts() => RustLib.instance.api.crateApiGetContacts();
@@ -36,6 +40,20 @@ Future<List<ContactInfo>> getContacts() => RustLib.instance.api.crateApiGetConta
 /// Send an encrypted message to a contact
 Future<String> sendMessage({required String contactId, required String content}) =>
     RustLib.instance.api.crateApiSendMessage(contactId: contactId, content: content);
+
+/// Save a received message from Veilid to the database
+/// Called by Flutter after polling Veilid mailbox
+Future<String> saveReceivedMessage(
+        {required String senderId, required String content, required PlatformInt64 createdAt}) =>
+    RustLib.instance.api.crateApiSaveReceivedMessage(senderId: senderId, content: content, createdAt: createdAt);
+
+/// Get serialized message data for sending via Veilid
+Future<Uint8List> getMessageForVeilid({required String contactId, required String messageId}) =>
+    RustLib.instance.api.crateApiGetMessageForVeilid(contactId: contactId, messageId: messageId);
+
+/// Decrypt and save a received message from Veilid
+Future<String> decryptAndSaveMessage({required List<int> encryptedData}) =>
+    RustLib.instance.api.crateApiDecryptAndSaveMessage(encryptedData: encryptedData);
 
 /// Get messages from a conversation with a contact
 Future<List<MessageInfo>> getMessages({required String contactId, required int limit}) =>
@@ -47,6 +65,25 @@ Future<List<ConversationInfo>> getConversations() => RustLib.instance.api.crateA
 /// Mark a message as read
 Future<void> markMessageRead({required String messageId}) =>
     RustLib.instance.api.crateApiMarkMessageRead(messageId: messageId);
+
+/// Get Veilid mailbox key for current identity
+Future<String?> getMailboxKey() => RustLib.instance.api.crateApiGetMailboxKey();
+
+/// Set Veilid mailbox key for current identity
+Future<void> setMailboxKey({required String mailboxKey}) =>
+    RustLib.instance.api.crateApiSetMailboxKey(mailboxKey: mailboxKey);
+
+/// Create a Veilid mailbox using the desktop Veilid client
+Future<String> createVeilidMailboxDesktop() => RustLib.instance.api.crateApiCreateVeilidMailboxDesktop();
+
+/// Send message via desktop Veilid client
+Future<bool> sendMessageViaVeilidDesktop({required String recipientMailboxKey, required List<int> messageData}) =>
+    RustLib.instance.api
+        .crateApiSendMessageViaVeilidDesktop(recipientMailboxKey: recipientMailboxKey, messageData: messageData);
+
+/// Poll mailbox for new messages (desktop)
+Future<List<Uint8List>> pollVeilidMailboxDesktop({required String mailboxKey}) =>
+    RustLib.instance.api.crateApiPollVeilidMailboxDesktop(mailboxKey: mailboxKey);
 
 /// Shutdown Veilid and cleanup
 Future<void> shutdown() => RustLib.instance.api.crateApiShutdown();

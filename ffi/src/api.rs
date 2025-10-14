@@ -16,6 +16,7 @@ lazy_static! {
     static ref DATABASE: Mutex<Option<storage::Database>> = Mutex::new(None);
     static ref IDENTITY: Mutex<Option<identity::Identity>> = Mutex::new(None);
     static ref DATA_DIR: Mutex<Option<String>> = Mutex::new(None);
+    static ref BASE_DATA_DIR: Mutex<Option<String>> = Mutex::new(None);
 }
 
 // Helper function to convert core Error to String
@@ -135,16 +136,16 @@ pub async fn initialize(name: String, password: String, base_data_dir: String) -
     let veilid_config = veilid_client::VeilidConfig::default_private(veilid_dir);
     let mut veilid = veilid_client::VeilidClient::new(veilid_config);
 
-    // Try to start Veilid
+    // Try to start Veilid (for desktop only - Flutter will handle Veilid on mobile)
     // Works on desktop (macOS/Windows/Linux)
-    // Fails gracefully on mobile (Android/iOS) due to JNI requirements
+    // Fails gracefully on mobile (Android/iOS) - mobile uses veilid-flutter plugin directly
     match veilid.start().await {
         Ok(_) => {
-            eprintln!("✅ Veilid client started and connected");
+            eprintln!("✅ Veilid client started and connected (desktop)");
         }
         Err(e) => {
-            eprintln!("⚠️  Veilid not available: {}", e);
-            eprintln!("   (Normal on mobile - desktop platforms have full Veilid support)");
+            eprintln!("⚠️  Veilid not available via Rust: {}", e);
+            eprintln!("   (Normal on mobile - use veilid-flutter plugin instead)");
         }
     }
 
@@ -153,6 +154,7 @@ pub async fn initialize(name: String, password: String, base_data_dir: String) -
     *DATABASE.lock().unwrap() = Some(db);
     *IDENTITY.lock().unwrap() = Some(identity);
     *DATA_DIR.lock().unwrap() = Some(data_dir.to_string_lossy().to_string());
+    *BASE_DATA_DIR.lock().unwrap() = Some(base_data_dir.clone());
 
     Ok(fingerprint)
 }
@@ -271,8 +273,12 @@ pub async fn register_safe_house(
     Ok(format!("{}", id.0))
 }
 
-/// Add a contact
-pub async fn add_contact(name: String, fingerprint_words: String) -> Result<(), String> {
+/// Add a contact with their Veilid mailbox key
+pub async fn add_contact(
+    name: String,
+    fingerprint_words: String,
+    mailbox_key: String,
+) -> Result<(), String> {
     use underground_railroad_core::{PersonId, Fingerprint, SecureBytes, TrustLevel};
 
     let db = DATABASE.lock().unwrap();
@@ -295,10 +301,12 @@ pub async fn add_contact(name: String, fingerprint_words: String) -> Result<(), 
     let fingerprint = Fingerprint::new(fp_bytes);
     let person_id = PersonId::new();
 
-    // Create placeholder veilid route (empty for now)
-    let route = SecureBytes::new(vec![]);
+    // Store the mailbox key in veilid_route field (as bytes)
+    // This allows contacts to send messages to this person's Veilid mailbox
+    let mailbox_key_bytes = mailbox_key.as_bytes().to_vec();
+    let route = SecureBytes::new(mailbox_key_bytes);
 
-    let contact = underground_railroad_core::trust::Contact::new(
+    let mut contact = underground_railroad_core::trust::Contact::new(
         person_id,
         name,
         fingerprint,
@@ -306,10 +314,42 @@ pub async fn add_contact(name: String, fingerprint_words: String) -> Result<(), 
         TrustLevel::Unknown,
     );
 
+    // Store original fingerprint words as a tag for display
+    contact.add_tag(format!("fp:{}", fingerprint_words));
+
     let repos = storage::RepositoryManager::new(db);
     to_string_err(repos.contacts().save(&contact))?;
 
     Ok(())
+}
+
+/// Get a contact's Veilid mailbox key
+pub async fn get_contact_mailbox_key(contact_id: String) -> Result<Option<String>, String> {
+    use underground_railroad_core::PersonId;
+    use uuid::Uuid;
+
+    let db = DATABASE.lock().unwrap();
+    let db = db.as_ref()
+        .ok_or_else(|| "Database not open".to_string())?;
+
+    let contact_uuid = Uuid::parse_str(&contact_id)
+        .map_err(|e| format!("Invalid contact ID: {}", e))?;
+    let contact_person_id = PersonId(contact_uuid);
+
+    let repos = storage::RepositoryManager::new(db);
+    let contact = to_string_err(repos.contacts().get(contact_person_id))?
+        .ok_or_else(|| "Contact not found".to_string())?;
+
+    // Extract mailbox key from veilid_route field
+    let mailbox_key_bytes = contact.veilid_route.as_bytes();
+    if mailbox_key_bytes.is_empty() {
+        return Ok(None);
+    }
+
+    let mailbox_key = String::from_utf8(mailbox_key_bytes.to_vec())
+        .map_err(|e| format!("Invalid mailbox key: {}", e))?;
+
+    Ok(Some(mailbox_key))
 }
 
 /// Get all contacts
@@ -322,11 +362,20 @@ pub async fn get_contacts() -> Result<Vec<ContactInfo>, String> {
     let contacts = to_string_err(repos.contacts().list())?;
 
     Ok(contacts.into_iter().map(|c| {
-        let words = c.verification_words();
+        // Try to get original fingerprint words from tags
+        let fingerprint = c.tags.iter()
+            .find(|tag| tag.starts_with("fp:"))
+            .map(|tag| tag.strip_prefix("fp:").unwrap_or("").to_string())
+            .unwrap_or_else(|| {
+                // Fallback to generated words if no tag found
+                let words = c.verification_words();
+                format!("{} {} {}", words[0], words[1], words[2])
+            });
+
         ContactInfo {
             id: c.id.0.to_string(),
             name: c.info.name,
-            fingerprint: format!("{} {} {}", words[0], words[1], words[2]),
+            fingerprint,
         }
     }).collect())
 }
@@ -378,102 +427,117 @@ pub async fn send_message(contact_id: String, content: String) -> Result<String,
         &recipient_keys,
     ))?;
 
-    // Save to database as sent
+    // Save to database as sent (Flutter will handle Veilid transmission)
     to_string_err(repos.messages().save(&message, storage::repository::MessageDirection::Sent))?;
 
-    // Also save to recipient's local database (simulating Veilid transmission)
-    // In a real implementation, this would send via Veilid DHT/routing
-    // For now, we write directly to recipient's database since both instances share the same storage
-    // TODO: Replace with actual Veilid network transmission
-
-    // For testing: Store in app's messages directory (cross-platform)
-    // This simulates network message delivery
-    // Format: {data_dir}/messages/urr-msg-{recipient_id}-{message_id}.bin
-    let data_dir = DATA_DIR.lock().unwrap();
-    let data_dir = data_dir.as_ref()
-        .ok_or_else(|| "Data directory not set".to_string())?;
-
-    let messages_dir = std::path::PathBuf::from(data_dir).join("messages");
-    std::fs::create_dir_all(&messages_dir)
-        .map_err(|e| format!("Failed to create messages directory: {}", e))?;
-
-    let message_file = messages_dir.join(format!(
-        "urr-msg-{}-{}.bin",
-        recipient_id.0,
-        message_id
-    ));
-
-    let serialized = bincode::serialize(&message)
-        .map_err(|e| format!("Failed to serialize: {}", e))?;
-    std::fs::write(&message_file, &serialized)
-        .map_err(|e| format!("Failed to write message: {}", e))?;
-
+    // Return the message ID and serialized message so Flutter can send via Veilid
     Ok(message_id)
 }
 
-/// Check for new messages from the network (simulated)
-/// In production, this would poll Veilid DHT mailbox
-pub async fn poll_messages() -> Result<u32, String> {
-    use underground_railroad_core::messaging;
-
-    let identity = IDENTITY.lock().unwrap();
-    let identity = identity.as_ref()
-        .ok_or_else(|| "Not initialized".to_string())?;
-    let my_id = identity.id;
-    drop(identity); // Release lock
+/// Save a received message from Veilid to the database
+/// Called by Flutter after polling Veilid mailbox
+pub async fn save_received_message(
+    sender_id: String,
+    content: String,
+    created_at: i64,
+) -> Result<String, String> {
+    use underground_railroad_core::{PersonId, messaging};
+    use uuid::Uuid;
 
     let db = DATABASE.lock().unwrap();
     let db = db.as_ref()
         .ok_or_else(|| "Database not open".to_string())?;
 
-    // Check for messages addressed to me in messages directory
-    // Pattern: {data_dir}/messages/urr-msg-{my_id}-*.bin
-    let data_dir = DATA_DIR.lock().unwrap();
-    let data_dir = data_dir.as_ref()
-        .ok_or_else(|| "Data directory not set".to_string())?;
+    // Parse sender ID
+    let sender_uuid = Uuid::parse_str(&sender_id)
+        .map_err(|e| format!("Invalid sender ID: {}", e))?;
+    let sender_person_id = PersonId(sender_uuid);
 
-    let messages_dir = std::path::PathBuf::from(data_dir).join("messages");
-    if !messages_dir.exists() {
-        return Ok(0); // No messages yet
+    let identity = IDENTITY.lock().unwrap();
+    let identity = identity.as_ref()
+        .ok_or_else(|| "Not initialized".to_string())?;
+    let recipient_id = identity.id;
+
+    // Create message with provided timestamp
+    use chrono::{DateTime, Utc};
+    let dt = DateTime::from_timestamp(created_at, 0)
+        .ok_or_else(|| "Invalid timestamp".to_string())?;
+
+    let message = messaging::Message {
+        id: Uuid::new_v4(),
+        sender: sender_person_id,
+        recipient: recipient_id,
+        message_type: messaging::MessageType::Text { content },
+        created_at: underground_railroad_core::CoarseTimestamp::from_datetime(dt),
+        expires_at: None,
+        status: messaging::MessageStatus::Delivered,
+        hop_count: 0, // Direct message from Veilid
+    };
+
+    let message_id = message.id.to_string();
+
+    // Save to database as received
+    let repos = storage::RepositoryManager::new(db);
+    to_string_err(repos.messages().save(&message, storage::repository::MessageDirection::Received))?;
+
+    Ok(message_id)
+}
+
+/// Get serialized message data for sending via Veilid
+pub async fn get_message_for_veilid(_contact_id: String, message_id: String) -> Result<Vec<u8>, String> {
+    use underground_railroad_core::PersonId;
+    use uuid::Uuid;
+
+    let db = DATABASE.lock().unwrap();
+    let db = db.as_ref()
+        .ok_or_else(|| "Database not open".to_string())?;
+
+    let msg_uuid = Uuid::parse_str(&message_id)
+        .map_err(|e| format!("Invalid message ID: {}", e))?;
+
+    let repos = storage::RepositoryManager::new(db);
+    let (message, _) = to_string_err(repos.messages().get(msg_uuid))?
+        .ok_or_else(|| "Message not found".to_string())?;
+
+    // Serialize the message for Veilid transmission
+    bincode::serialize(&message)
+        .map_err(|e| format!("Failed to serialize message: {}", e))
+}
+
+/// Decrypt and save a received message from Veilid
+pub async fn decrypt_and_save_message(encrypted_data: Vec<u8>) -> Result<String, String> {
+    use underground_railroad_core::messaging;
+
+    let identity = IDENTITY.lock().unwrap();
+    let identity = identity.as_ref()
+        .ok_or_else(|| "Not initialized".to_string())?;
+
+    let db = DATABASE.lock().unwrap();
+    let db = db.as_ref()
+        .ok_or_else(|| "Database not open".to_string())?;
+
+    // Deserialize the message
+    let message: messaging::Message = bincode::deserialize(&encrypted_data)
+        .map_err(|e| format!("Failed to deserialize message: {}", e))?;
+
+    // Verify this message is for us
+    if message.recipient != identity.id {
+        return Err("Message not intended for this recipient".to_string());
     }
 
-    let prefix = format!("urr-msg-{}-", my_id.0);
+    let message_id = message.id.to_string();
 
-    let mut new_messages = 0;
+    // Save to database as received
+    let repos = storage::RepositoryManager::new(db);
+    to_string_err(repos.messages().save(&message, storage::repository::MessageDirection::Received))?;
 
-    // Read all message files for this user
-    if let Ok(entries) = std::fs::read_dir(&messages_dir) {
-        for entry in entries.flatten() {
-            let file_name = entry.file_name();
-            let file_name_str = file_name.to_string_lossy();
-
-            // Check if this file is for us
-            if file_name_str.starts_with(&prefix) && file_name_str.ends_with(".bin") {
-                if let Ok(data) = std::fs::read(entry.path()) {
-                    if let Ok(message) = bincode::deserialize::<messaging::Message>(&data) {
-                        // Save to local database as received
-                        let repos = storage::RepositoryManager::new(db);
-                        if repos.messages().save(&message, storage::repository::MessageDirection::Received).is_ok() {
-                            new_messages += 1;
-                            // Delete the file after processing
-                            let _ = std::fs::remove_file(entry.path());
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    Ok(new_messages)
+    Ok(message_id)
 }
 
 /// Get messages from a conversation with a contact
 pub async fn get_messages(contact_id: String, limit: u32) -> Result<Vec<MessageInfo>, String> {
     use underground_railroad_core::PersonId;
     use uuid::Uuid;
-
-    // First, poll for new messages from network
-    let _ = poll_messages().await;
 
     let db = DATABASE.lock().unwrap();
     let db = db.as_ref()
@@ -517,9 +581,6 @@ pub async fn get_messages(contact_id: String, limit: u32) -> Result<Vec<MessageI
 
 /// Get list of all conversations
 pub async fn get_conversations() -> Result<Vec<ConversationInfo>, String> {
-    // First, poll for new messages from network
-    let _ = poll_messages().await;
-
     let db = DATABASE.lock().unwrap();
     let db = db.as_ref()
         .ok_or_else(|| "Database not open".to_string())?;
@@ -601,6 +662,93 @@ pub struct ConversationInfo {
     pub unread_count: u32,
     pub last_message: Option<String>,
     pub last_message_time: Option<i64>,
+}
+
+/// Get Veilid mailbox key for current identity
+pub async fn get_mailbox_key() -> Result<Option<String>, String> {
+    let identity = IDENTITY.lock().unwrap();
+    let identity = identity.as_ref()
+        .ok_or_else(|| "Not initialized".to_string())?;
+
+    Ok(identity.veilid_mailbox.as_ref().map(|bytes| {
+        String::from_utf8(bytes.clone()).unwrap_or_default()
+    }))
+}
+
+/// Set Veilid mailbox key for current identity
+pub async fn set_mailbox_key(mailbox_key: String) -> Result<(), String> {
+    let mut identity_lock = IDENTITY.lock().unwrap();
+    let identity = identity_lock.as_mut()
+        .ok_or_else(|| "Not initialized".to_string())?;
+
+    // Store the key string as bytes
+    let mailbox_bytes = mailbox_key.as_bytes().to_vec();
+
+    identity.veilid_mailbox = Some(mailbox_bytes);
+
+    // Save to database
+    let db = DATABASE.lock().unwrap();
+    let db = db.as_ref()
+        .ok_or_else(|| "Database not open".to_string())?;
+
+    let repos = storage::RepositoryManager::new(db);
+    to_string_err(repos.identity().save(identity))?;
+
+    Ok(())
+}
+
+/// Create a Veilid mailbox using the desktop Veilid client
+pub async fn create_veilid_mailbox_desktop() -> Result<String, String> {
+    use veilid_client::{DHTSchema, CRYPTO_KIND_VLD0, VeilidAPI};
+    use std::sync::Arc;
+
+    // Get API reference without holding the lock
+    let api: Arc<VeilidAPI> = {
+        let veilid = VEILID_CLIENT.lock().unwrap();
+        Arc::new(veilid.as_ref()
+            .ok_or_else(|| "Veilid not started".to_string())?
+            .api()
+            .ok_or_else(|| "Veilid API not available".to_string())?
+            .clone())
+    }; // Lock dropped here
+
+    // Create routing context with privacy
+    let routing_context = api.routing_context()
+        .map_err(|e| e.to_string())?
+        .with_default_safety()
+        .map_err(|e| e.to_string())?;
+
+    // Create DHT record for mailbox (SMPL schema allows multiple writers)
+    let schema = DHTSchema::smpl(1, vec![])
+        .map_err(|e| e.to_string())?;
+    let descriptor = routing_context.create_dht_record(schema, None, Some(CRYPTO_KIND_VLD0))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let mailbox_key = descriptor.key().to_string();
+
+    Ok(mailbox_key)
+}
+
+/// Send message via desktop Veilid client
+pub async fn send_message_via_veilid_desktop(
+    _recipient_mailbox_key: String,
+    _message_data: Vec<u8>,
+) -> Result<bool, String> {
+    // TODO: Implement desktop DHT messaging
+    // For now, messages are saved locally but not transmitted on desktop
+    // Mobile uses veilid-flutter which works
+    eprintln!("⚠️  Desktop Veilid messaging not yet implemented");
+    eprintln!("   Message saved locally only");
+    Ok(false)
+}
+
+/// Poll mailbox for new messages (desktop)
+pub async fn poll_veilid_mailbox_desktop(_mailbox_key: String) -> Result<Vec<Vec<u8>>, String> {
+    // TODO: Implement desktop DHT mailbox polling
+    // For now, desktop doesn't receive messages via Veilid
+    // Mobile uses veilid-flutter which works
+    Ok(vec![])
 }
 
 /// Shutdown Veilid and cleanup

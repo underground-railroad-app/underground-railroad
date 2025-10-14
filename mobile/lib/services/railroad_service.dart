@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import '../ffi/frb_generated.dart';
 import '../ffi/api.dart' as api;
 import 'veilid_service.dart';
+import 'veilid_messaging_service.dart';
 
 /// Service for communicating with Rust core + Veilid
 class RailroadService {
@@ -19,12 +20,86 @@ class RailroadService {
 
   // Veilid service for mobile networking
   final VeilidService _veilidService = VeilidService();
+  final VeilidMessagingService _messagingService = VeilidMessagingService();
 
   bool _initialized = false;
   String? _fingerprint;
 
   bool get isInitialized => _initialized;
   String? get fingerprint => _fingerprint;
+
+  /// Get shareable identity (fingerprint + mailbox key)
+  Future<String?> getShareableIdentity() async {
+    if (!_initialized || _fingerprint == null) {
+      return null;
+    }
+
+    // Ensure mailbox exists
+    await _ensureMailbox();
+
+    // Get mailbox key
+    final mailboxKey = await _api.crateApiGetMailboxKey();
+
+    if (mailboxKey == null || mailboxKey.isEmpty) {
+      // Return just fingerprint if no mailbox
+      return _fingerprint;
+    }
+
+    // Combine fingerprint and mailbox key with | delimiter
+    return '$_fingerprint|$mailboxKey';
+  }
+
+  /// Ensure mailbox exists (create if needed) - works on all platforms
+  Future<bool> _ensureMailbox() async {
+    try {
+      // Check if we have a saved mailbox key
+      final existingMailboxKey = await _api.crateApiGetMailboxKey();
+
+      if (existingMailboxKey != null && existingMailboxKey.isNotEmpty) {
+        // Mailbox already exists
+        if (Platform.isAndroid || Platform.isIOS) {
+          // Load on mobile if not already loaded
+          if (!_messagingService.hasMailbox && _veilidService.isConnected) {
+            debugPrint('📬 Loading existing mailbox (mobile)...');
+            final loaded = await _messagingService.loadMailbox(existingMailboxKey);
+            if (loaded) {
+              debugPrint('✅ Mailbox loaded');
+            }
+          }
+        }
+        return true; // Desktop mailbox always available via FFI
+      }
+
+      // Need to create new mailbox
+      String? mailboxKey;
+
+      if (Platform.isAndroid || Platform.isIOS) {
+        // Mobile: Use veilid-flutter
+        if (!_veilidService.isConnected) {
+          debugPrint('⚠️ Cannot create mailbox: Veilid not connected (mobile)');
+          return false;
+        }
+
+        debugPrint('📬 Creating new mailbox (mobile)...');
+        mailboxKey = await _messagingService.createMailbox();
+      } else {
+        // Desktop: Use Rust FFI
+        debugPrint('📬 Creating new mailbox (desktop)...');
+        mailboxKey = await _api.crateApiCreateVeilidMailboxDesktop();
+      }
+
+      if (mailboxKey != null && mailboxKey.isNotEmpty) {
+        await _api.crateApiSetMailboxKey(mailboxKey: mailboxKey);
+        debugPrint('✅ Mailbox created: $mailboxKey');
+        return true;
+      }
+
+      return false;
+    } catch (e) {
+      debugPrint('❌ Mailbox creation failed: $e');
+      return false;
+    }
+  }
 
   /// Initialize the Underground Railroad
   /// This creates identity, starts Veilid, connects to network
@@ -58,7 +133,7 @@ class RailroadService {
       final fingerprint = await _api.crateApiInitialize(
         name: name,
         password: password,
-        dataDir: baseDataDir,
+        baseDataDir: baseDataDir,
       );
 
       _fingerprint = fingerprint;
@@ -66,8 +141,41 @@ class RailroadService {
 
       debugPrint('✅ Initialized! Fingerprint: $_fingerprint');
 
-      // Initialize Veilid with correct two-step pattern (fixes Android crash)
-      await _veilidService.initialize('UndergroundRailroad');
+      // Initialize Veilid on mobile only (desktop uses Rust-side Veilid)
+      if (Platform.isAndroid || Platform.isIOS) {
+        await _veilidService.initialize('UndergroundRailroad');
+      } else {
+        debugPrint('✅ Desktop platform: Using Rust-side Veilid (already started)');
+      }
+
+      // Create or load Veilid mailbox if connected (mobile only)
+      if ((Platform.isAndroid || Platform.isIOS) && _veilidService.isConnected) {
+        try {
+          // Check if we already have a mailbox key
+          final existingMailboxKey = await _api.crateApiGetMailboxKey();
+
+          if (existingMailboxKey != null) {
+            // Load existing mailbox
+            debugPrint('📬 Loading existing Veilid mailbox...');
+            final loaded = await _messagingService.loadMailbox(existingMailboxKey);
+            if (loaded) {
+              debugPrint('✅ Mailbox loaded successfully');
+            }
+          } else {
+            // Create new mailbox
+            debugPrint('📬 Creating new Veilid mailbox...');
+            final mailboxKey = await _messagingService.createMailbox();
+            if (mailboxKey != null) {
+              // Save mailbox key to identity
+              await _api.crateApiSetMailboxKey(mailboxKey: mailboxKey);
+              debugPrint('✅ Mailbox created and saved');
+            }
+          }
+        } catch (e) {
+          debugPrint('⚠️ Mailbox setup failed: $e');
+          debugPrint('   Messages will use file-based fallback');
+        }
+      }
 
     } catch (e) {
       debugPrint('❌ Initialization failed: $e');
@@ -132,11 +240,17 @@ class RailroadService {
   /// Get network status
   Future<NetworkStatus> getStatus() async {
     try {
-      // Call Rust FFI
+      // Call Rust FFI for database counts
       final status = await _api.crateApiGetStatus();
 
+      // On mobile: Use Flutter's VeilidService (veilid-flutter plugin)
+      // On desktop: Use Rust FFI status (Rust manages Veilid directly)
+      final veilidConnected = Platform.isAndroid || Platform.isIOS
+          ? _veilidService.isConnected
+          : status.veilidConnected;
+
       return NetworkStatus(
-        veilidConnected: status.veilidConnected,
+        veilidConnected: veilidConnected,
         contactsCount: status.contactsCount,
         emergenciesCount: status.emergenciesCount,
         safeHousesCount: status.safeHousesCount,
@@ -148,14 +262,29 @@ class RailroadService {
   }
 
   /// Add a contact
-  Future<void> addContact(String name, String fingerprint) async {
+  /// identityString can be either:
+  ///   - "forest aurora coffee" (fingerprint only, no messaging)
+  ///   - "forest aurora coffee|VLD0:xyz..." (fingerprint + mailbox key for messaging)
+  Future<void> addContact(String name, String identityString) async {
     try {
-      debugPrint('Adding contact: $name with fingerprint: $fingerprint');
+      // Parse identity string - it may contain fingerprint + mailbox key
+      final parts = identityString.split('|');
+      final fingerprint = parts[0].trim();
+      final mailboxKey = parts.length > 1 ? parts[1].trim() : '';
+
+      debugPrint('Adding contact: $name');
+      debugPrint('  Fingerprint: $fingerprint');
+      if (mailboxKey.isNotEmpty) {
+        debugPrint('  Mailbox: ${mailboxKey.substring(0, 20)}...');
+      } else {
+        debugPrint('  Mailbox: (none - messaging disabled)');
+      }
 
       // Call Rust FFI
       await _api.crateApiAddContact(
         name: name,
         fingerprintWords: fingerprint,
+        mailboxKey: mailboxKey,
       );
 
       debugPrint('✅ Contact added: $name');
@@ -184,13 +313,72 @@ class RailroadService {
     try {
       debugPrint('Sending message to: $contactId');
 
-      // Call Rust FFI
+      // Call Rust FFI to create and encrypt the message
       final messageId = await _api.crateApiSendMessage(
         contactId: contactId,
         content: content,
       );
 
-      debugPrint('✅ Message sent: $messageId');
+      debugPrint('✅ Message encrypted: $messageId');
+
+      // Ensure we have a mailbox
+      final hasMailbox = await _ensureMailbox();
+
+      // Check if we can transmit via Veilid
+      final veilidConnected = Platform.isAndroid || Platform.isIOS
+          ? _veilidService.isConnected
+          : true; // Desktop Veilid is managed by Rust and always connected
+
+      debugPrint('🔍 Veilid transmission check:');
+      debugPrint('   Platform: ${Platform.isAndroid ? "Android" : Platform.isIOS ? "iOS" : "Desktop"}');
+      debugPrint('   Veilid connected: $veilidConnected');
+      debugPrint('   Has mailbox: $hasMailbox');
+
+      if (veilidConnected && hasMailbox) {
+        try {
+          // Get the recipient's mailbox key from database
+          final recipientMailboxKey = await _api.crateApiGetContactMailboxKey(contactId: contactId);
+
+          if (recipientMailboxKey != null && recipientMailboxKey.isNotEmpty) {
+            // Get the encrypted message data from FFI
+            final encryptedData = await _api.crateApiGetMessageForVeilid(
+              contactId: contactId,
+              messageId: messageId,
+            );
+
+            // Send via Veilid DHT (platform-specific)
+            bool sent;
+            if (Platform.isAndroid || Platform.isIOS) {
+              // Mobile: Use veilid-flutter
+              sent = await _messagingService.sendMessage(
+                recipientMailboxKey,
+                messageId,
+                encryptedData,
+              );
+            } else {
+              // Desktop: Use Rust FFI
+              sent = await _api.crateApiSendMessageViaVeilidDesktop(
+                recipientMailboxKey: recipientMailboxKey,
+                messageData: encryptedData,
+              );
+            }
+
+            if (sent) {
+              debugPrint('📤 Message transmitted via Veilid');
+            } else {
+              debugPrint('⚠️ Message saved locally but Veilid transmission failed');
+            }
+          } else {
+            debugPrint('⚠️ No mailbox key for recipient - message saved locally only');
+          }
+        } catch (e) {
+          debugPrint('⚠️ Veilid transmission error: $e');
+          debugPrint('   Message saved locally, will retry later');
+        }
+      } else {
+        debugPrint('⚠️ Veilid transmission skipped - not connected or no mailbox');
+      }
+
       return messageId;
     } catch (e) {
       debugPrint('❌ Failed to send message: $e');
@@ -198,10 +386,60 @@ class RailroadService {
     }
   }
 
+  /// Poll Veilid for new messages and save them to database (all platforms)
+  Future<void> _pollVeilidMessages() async {
+    try {
+      // Check if we have a mailbox
+      final mailboxKey = await _api.crateApiGetMailboxKey();
+      if (mailboxKey == null || mailboxKey.isEmpty) {
+        return; // No mailbox to poll
+      }
+
+      // Poll for new messages (platform-specific)
+      List<Uint8List> encryptedMessages;
+
+      if (Platform.isAndroid || Platform.isIOS) {
+        // Mobile: Use veilid-flutter
+        if (!_veilidService.isConnected || !_messagingService.hasMailbox) {
+          return;
+        }
+        encryptedMessages = await _messagingService.pollMessages();
+      } else {
+        // Desktop: Use Rust FFI
+        encryptedMessages = await _api.crateApiPollVeilidMailboxDesktop(mailboxKey: mailboxKey);
+      }
+
+      if (encryptedMessages.isEmpty) {
+        return;
+      }
+
+      debugPrint('📥 Retrieved ${encryptedMessages.length} encrypted messages from Veilid');
+
+      // For each message, decrypt and save using FFI
+      for (final encryptedData in encryptedMessages) {
+        try {
+          final messageId = await _api.crateApiDecryptAndSaveMessage(
+            encryptedData: encryptedData,
+          );
+
+          debugPrint('✅ Message decrypted and saved: $messageId');
+        } catch (e) {
+          debugPrint('⚠️ Failed to process message: $e');
+        }
+      }
+
+    } catch (e) {
+      debugPrint('⚠️ Failed to poll Veilid messages: $e');
+    }
+  }
+
   /// Get messages from a conversation
   Future<List<api.MessageInfo>> getMessages(String contactId, {int limit = 50}) async {
     try {
-      // Call Rust FFI
+      // First, poll Veilid for any new messages
+      await _pollVeilidMessages();
+
+      // Call Rust FFI to get messages from database
       final messages = await _api.crateApiGetMessages(
         contactId: contactId,
         limit: limit,
@@ -218,6 +456,9 @@ class RailroadService {
   /// Get all conversations
   Future<List<api.ConversationInfo>> getConversations() async {
     try {
+      // First, poll Veilid for any new messages
+      await _pollVeilidMessages();
+
       // Call Rust FFI
       final conversations = await _api.crateApiGetConversations();
 
@@ -245,10 +486,12 @@ class RailroadService {
     try {
       debugPrint('Shutting down Underground Railroad...');
 
-      // Shutdown Veilid
-      await _veilidService.shutdown();
+      // Shutdown Veilid (mobile only - desktop is handled by Rust FFI)
+      if (Platform.isAndroid || Platform.isIOS) {
+        await _veilidService.shutdown();
+      }
 
-      // Call Rust FFI
+      // Call Rust FFI (handles Veilid shutdown on desktop)
       await _api.crateApiShutdown();
 
       _initialized = false;
