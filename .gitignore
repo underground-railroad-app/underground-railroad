@@ -1,0 +1,75 @@
+# Rust
+target/
+Cargo.lock
+**/*.rs.bk
+*.pdb
+.cargo/config.toml
+
+# Flutter/Dart
+mobile/.dart_tool/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/.packages
+mobile/build/
+mobile/pubspec.lock
+mobile/.flutter-plugins-dependencies
+mobile/.metadata
+mobile/ios/Flutter/Generated.xcconfig
+mobile/ios/Flutter/flutter_export_environment.sh
+mobile/ios/Pods/
+mobile/ios/.symlinks/
+mobile/ios/Flutter/App.framework
+mobile/ios/Flutter/Flutter.framework
+mobile/ios/Flutter/Flutter.podspec
+mobile/android/local.properties
+mobile/android/.gradle/
+mobile/android/build/
+mobile/android/captures/
+mobile/android/gradlew
+mobile/android/gradlew.bat
+mobile/android/gradle-wrapper.jar
+mobile/android/app/debug
+mobile/android/app/profile
+mobile/android/app/release
+mobile/android/app/*.jks
+mobile/android/app/*.keystore
+mobile/android/key.properties
+mobile/coverage/
+mobile/test/.test_coverage.dart
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Sensitive data
+.underground-railroad/
+*.db
+*.db-shm
+*.db-wal
+salt
+veilid/
+
+# Logs
+*.log
+
+# Build artifacts
+*.dylib
+*.so
+*.dll
+*.a
+
+# macOS
+.DS_Store
+*.xcuserstate
+xcuserdata/
+
+# Test artifacts
+/tmp/
+
+# Environment
+.env
+.env.local

@@ -1,0 +1,25 @@
+[package]
+name = "underground-railroad-ffi"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+underground-railroad-core = { path = "../core" }
+flutter_rust_bridge = "=2.11.1"
+tokio = { version = "1.36", features = ["full", "rt-multi-thread"] }
+anyhow = "1.0"
+lazy_static = "1.4"
+rand = "0.8"
+bincode = "1.3"
+uuid = { version = "1.7", features = ["v4"] }
+
+# Android JNI support
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"
+android_logger = "0.13"
+log = "0.4"
+
+# Build dependencies removed - use flutter_rust_bridge_codegen CLI tool instead

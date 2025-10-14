@@ -1,0 +1,5 @@
+# Flutter Rust Bridge configuration
+rust_input: "crate::api"
+rust_root: "ffi/"
+dart_output: "mobile/lib/ffi/"
+dart_format_line_length: 120
