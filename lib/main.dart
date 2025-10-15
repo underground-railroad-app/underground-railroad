@@ -1,8 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:underground_railroad/core/routing/app_router.dart';
+import 'package:underground_railroad/generated/bridge.dart/frb_generated.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize Rust bridge
+  await RustLib.init();
+
   runApp(
     const ProviderScope(
       child: UndergroundRailroadApp(),

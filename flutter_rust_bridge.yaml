@@ -1,14 +1,7 @@
 # Flutter Rust Bridge Configuration
-rust_input:
-  - rust/src/api.rs
-
-dart_output:
-  - lib/generated/bridge.dart
-
-c_output:
-  - rust/src/bridge_generated.rs
+rust_input: crate::api
+rust_root: rust/
+dart_output: lib/generated/bridge.dart
+rust_output: rust/src/bridge_generated.rs
 
 dart_format_line_length: 120
-
-# Use codegen mode
-codegen_mode: codegen

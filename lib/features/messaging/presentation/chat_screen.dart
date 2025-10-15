@@ -280,6 +280,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         ],
       ),
     );
+      },
+      loading: () => const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      ),
+      error: (error, stack) => Scaffold(
+        appBar: AppBar(title: const Text('Error')),
+        body: Center(child: Text('Error: $error')),
+      ),
+    );
   }
 
   void _showSafetyNumber(BuildContext context) async {

@@ -1,8 +1,6 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:path_provider/path_provider.dart';
-// TODO: Import generated bridge
-// import 'package:underground_railroad/generated/bridge.dart';
+import 'package:underground_railroad/core/utils/platform_directories.dart';
 
 /// Veilid connection states
 enum VeilidConnectionState {
@@ -35,8 +33,8 @@ class VeilidService {
     _updateState(VeilidConnectionState.connecting);
 
     try {
-      // Get application documents directory for Veilid config
-      final appDir = await getApplicationDocumentsDirectory();
+      // Get application data directory for Veilid config
+      final appDir = await PlatformDirectories.getAppDataDirectory();
       final configPath = '${appDir.path}/veilid';
 
       // TODO: Initialize via bridge

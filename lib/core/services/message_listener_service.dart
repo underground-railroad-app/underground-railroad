@@ -1,11 +1,12 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:underground_railroad/core/crypto/message_crypto_service.dart';
-import 'package:underground_railroad/core/veilid/veilid_service.dart';
+import 'package:underground_railroad/core/veilid/veilid_service.dart' hide veilidServiceProvider;
 import 'package:underground_railroad/features/contacts/data/contact_repository.dart';
 import 'package:underground_railroad/features/messaging/data/message_repository.dart';
 import 'package:underground_railroad/shared/models/contact.dart';
 import 'package:underground_railroad/shared/models/message.dart';
+import 'package:underground_railroad/shared/providers/app_providers.dart';
 
 /// Service for listening to incoming messages via Veilid
 class MessageListenerService {

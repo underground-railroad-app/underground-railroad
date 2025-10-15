@@ -60,6 +60,9 @@ cd ..
 
 echo ""
 echo -e "${BLUE}📋 Step 3: Generating Flutter-Rust bridge...${NC}"
+# Add cargo bin directory to PATH (works with both regular cargo and asdf)
+RUST_VERSION=$(rustc --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$HOME/.asdf/installs/rust/${RUST_VERSION}/bin:$HOME/.asdf/shims:$PATH"
 if flutter_rust_bridge_codegen generate; then
     echo -e "${GREEN}✅ Bridge code generated${NC}"
 else

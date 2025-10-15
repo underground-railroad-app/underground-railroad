@@ -34,12 +34,8 @@ class _PinEntryScreenState extends ConsumerState<PinEntryScreen> {
     });
 
     try {
-      // TODO: Get security manager from provider
-      // final securityManager = ref.read(securityManagerProvider);
-      // final result = await securityManager.verifyPIN(_pinController.text);
-
-      // Placeholder verification
-      final result = PINVerificationResult.invalid;
+      final securityManager = ref.read(securityManagerProvider);
+      final result = await securityManager.verifyPIN(_pinController.text);
 
       switch (result) {
         case PINVerificationResult.real:

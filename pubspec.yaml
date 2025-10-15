@@ -26,13 +26,13 @@ dependencies:
   flutter_secure_storage: ^9.2.2
 
   # Security
-  biometric_storage: ^5.2.0
+  biometric_storage: ^5.0.1
   local_auth: ^2.3.0
   cryptography: ^2.7.0
   crypto: ^3.0.6
 
   # Veilid Integration
-  flutter_rust_bridge: ^2.7.0
+  flutter_rust_bridge: ^2.11.0
   ffi: ^2.1.3
 
   # Utilities
@@ -54,7 +54,6 @@ dev_dependencies:
   riverpod_generator: ^2.6.2
   freezed: ^2.5.7
   json_serializable: ^6.8.0
-  flutter_rust_bridge_codegen: ^2.7.0
 
 flutter:
   uses-material-design: true
@@ -62,12 +61,3 @@ flutter:
   # assets:
   #   - assets/images/
   #   - assets/icons/
-
-# Platform configurations
-flutter:
-  platforms:
-    android:
-    ios:
-    macos:
-    linux:
-    windows:

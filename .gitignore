@@ -5,9 +5,11 @@
 *.swp
 .DS_Store
 .atom/
+.build/
 .buildlog/
 .history
 .svn/
+.swiftpm/
 migrate_working_dir/
 
 # IntelliJ related
@@ -59,10 +61,13 @@ Cargo.lock
 /ios/.symlinks/
 /ios/Flutter/Flutter.framework
 /ios/Flutter/Flutter.podspec
+/ios/Flutter/flutter_export_environment.sh
 /macos/Pods/
 /macos/Flutter/ephemeral/
+/macos/Flutter/flutter_export_environment.sh
 /linux/flutter/ephemeral/
 /windows/flutter/ephemeral/
+/android/Flutter/flutter_export_environment.sh
 
 # Secrets and keys (CRITICAL for security)
 *.key

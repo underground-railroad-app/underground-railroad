@@ -1,7 +1,7 @@
 import 'package:path/path.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:sqflite_sqlcipher/sqflite.dart';
 import 'package:underground_railroad/core/constants/app_constants.dart';
+import 'package:underground_railroad/core/utils/platform_directories.dart';
 
 /// Encrypted database service using SQLCipher
 /// Supports dual databases (real and decoy) for plausible deniability
@@ -30,7 +30,7 @@ class DatabaseService {
 
   /// Initialize the real database
   Future<void> initializeRealDatabase(String password) async {
-    final directory = await getApplicationDocumentsDirectory();
+    final directory = await PlatformDirectories.getAppDataDirectory();
     final path = join(directory.path, AppConstants.dbName);
 
     _database = await openDatabase(
@@ -46,7 +46,7 @@ class DatabaseService {
 
   /// Initialize the decoy database
   Future<void> initializeDecoyDatabase(String password) async {
-    final directory = await getApplicationDocumentsDirectory();
+    final directory = await PlatformDirectories.getAppDataDirectory();
     final path = join(directory.path, AppConstants.decoyDbName);
 
     _decoyDatabase = await openDatabase(
@@ -68,10 +68,10 @@ class DatabaseService {
 
   /// Switch to real mode
   Future<void> switchToRealMode() async {
-    if (_database == null) {
-      throw StateError('Real database not initialized');
+    // Only switch if real database is initialized
+    if (_database != null) {
+      _isDecoyMode = false;
     }
-    _isDecoyMode = false;
   }
 
   /// Create database schema
@@ -161,7 +161,7 @@ class DatabaseService {
   Future<void> emergencyWipe({bool wipeDecoy = false}) async {
     await close();
 
-    final directory = await getApplicationDocumentsDirectory();
+    final directory = await PlatformDirectories.getAppDataDirectory();
 
     // Wipe real database
     final realPath = join(directory.path, AppConstants.dbName);
