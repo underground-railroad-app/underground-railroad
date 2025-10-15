@@ -1,5 +1,14 @@
-# Flutter Rust Bridge configuration
-rust_input: "crate::api"
-rust_root: "ffi/"
-dart_output: "mobile/lib/ffi/"
+# Flutter Rust Bridge Configuration
+rust_input:
+  - rust/src/api.rs
+
+dart_output:
+  - lib/generated/bridge.dart
+
+c_output:
+  - rust/src/bridge_generated.rs
+
 dart_format_line_length: 120
+
+# Use codegen mode
+codegen_mode: codegen

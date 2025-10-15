@@ -1,75 +1,75 @@
-# Rust
-target/
-Cargo.lock
-**/*.rs.bk
-*.pdb
-.cargo/config.toml
-
-# Flutter/Dart
-mobile/.dart_tool/
-mobile/.flutter-plugins
-mobile/.flutter-plugins-dependencies
-mobile/.packages
-mobile/build/
-mobile/pubspec.lock
-mobile/.flutter-plugins-dependencies
-mobile/.metadata
-mobile/ios/Flutter/Generated.xcconfig
-mobile/ios/Flutter/flutter_export_environment.sh
-mobile/ios/Pods/
-mobile/ios/.symlinks/
-mobile/ios/Flutter/App.framework
-mobile/ios/Flutter/Flutter.framework
-mobile/ios/Flutter/Flutter.podspec
-mobile/android/local.properties
-mobile/android/.gradle/
-mobile/android/build/
-mobile/android/captures/
-mobile/android/gradlew
-mobile/android/gradlew.bat
-mobile/android/gradle-wrapper.jar
-mobile/android/app/debug
-mobile/android/app/profile
-mobile/android/app/release
-mobile/android/app/*.jks
-mobile/android/app/*.keystore
-mobile/android/key.properties
-mobile/coverage/
-mobile/test/.test_coverage.dart
-
-# IDEs
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
-.DS_Store
-
-# Sensitive data
-.underground-railroad/
-*.db
-*.db-shm
-*.db-wal
-salt
-veilid/
-
-# Logs
+# Miscellaneous
+*.class
 *.log
-
-# Build artifacts
-*.dylib
-*.so
-*.dll
-*.a
-
-# macOS
+*.pyc
+*.swp
 .DS_Store
-*.xcuserstate
-xcuserdata/
+.atom/
+.buildlog/
+.history
+.svn/
+migrate_working_dir/
 
-# Test artifacts
-/tmp/
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
 
-# Environment
+# VS Code
+.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+/build/
+**/*.g.dart
+**/*.freezed.dart
+**/*.config.dart
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# Rust
+/rust/target/
+Cargo.lock
+
+# Generated bridge code
+/lib/generated/
+/rust/src/bridge_generated.rs
+/rust/src/bridge_generated.io.rs
+/rust/src/api/
+
+# Platform specific
+/ios/Pods/
+/ios/.symlinks/
+/ios/Flutter/Flutter.framework
+/ios/Flutter/Flutter.podspec
+/macos/Pods/
+/macos/Flutter/ephemeral/
+/linux/flutter/ephemeral/
+/windows/flutter/ephemeral/
+
+# Secrets and keys (CRITICAL for security)
+*.key
+*.pem
+*.p12
+*.keystore
+*.jks
+secrets/
 .env
 .env.local
